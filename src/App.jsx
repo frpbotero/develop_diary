@@ -223,6 +223,8 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
+  const [modalSaving, setModalSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
   async function loadGoals() {
@@ -250,6 +252,8 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
     event.preventDefault();
     if (!title.trim()) return;
     setError("");
+    setModalError("");
+    setModalSaving(true);
     try {
       const goal = await api.createGoal(
         createBlankGoalPayload({ title, description, durationMonths })
@@ -262,13 +266,17 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
       setDurationMonths(12);
       setIsCreating(false);
     } catch (err) {
-      setError(toAuthError(err));
+      setModalError(toAuthError(err));
+    } finally {
+      setModalSaving(false);
     }
   }
 
   async function importTemplateGoal(event) {
     event.preventDefault();
     setError("");
+    setModalError("");
+    setModalSaving(true);
 
     try {
       const payload = parseTemplateGoal(templateJson);
@@ -279,7 +287,9 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
       setTemplateJson(JSON.stringify(createTrailTemplateExample(), null, 2));
       setIsCreating(false);
     } catch (err) {
-      setError(toAuthError(err));
+      setModalError(toAuthError(err));
+    } finally {
+      setModalSaving(false);
     }
   }
 
@@ -335,7 +345,10 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
               </div>
               <button
                 type="button"
-                onClick={() => setIsCreating(false)}
+                onClick={() => {
+                  setModalError("");
+                  setIsCreating(false);
+                }}
                 className="icon-button"
                 aria-label="Fechar formulario"
               >
@@ -408,11 +421,17 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
               </>
             )}
 
+            {modalError && <div className="auth-alert">{modalError}</div>}
+
             <div className="goal-modal-actions">
               {goalMode === "simple" ? (
-                <button className="primary-button">Salvar objetivo</button>
+                <button className="primary-button" disabled={modalSaving}>
+                  {modalSaving ? "Salvando..." : "Salvar objetivo"}
+                </button>
               ) : (
-                <button className="primary-button">Importar JSON</button>
+                <button className="primary-button" disabled={modalSaving}>
+                  {modalSaving ? "Importando..." : "Importar JSON"}
+                </button>
               )}
             </div>
           </form>
@@ -434,9 +453,9 @@ function parseTemplateGoal(value) {
   let payload;
 
   try {
-    payload = JSON.parse(value);
+    payload = JSON.parse(normalizeJsonInput(value));
   } catch {
-    throw new Error("O template precisa ser um JSON valido.");
+    throw new Error("O template precisa ser um JSON valido. Pode colar sem markdown ou dentro de ```json ... ```.");
   }
 
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -495,6 +514,20 @@ function parseTemplateGoal(value) {
     artifacts: Array.isArray(payload.artifacts) ? payload.artifacts : [],
     templates: Array.isArray(payload.templates) ? payload.templates : [],
   };
+}
+
+function normalizeJsonInput(value) {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = fenced ? fenced[1].trim() : trimmed;
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return candidate.slice(firstBrace, lastBrace + 1);
+  }
+
+  return candidate;
 }
 
 function ensureStringArray(value) {
