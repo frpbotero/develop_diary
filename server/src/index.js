@@ -9,11 +9,20 @@ import { userDataRouter } from "./routes/userData.js";
 
 const app = express();
 const port = process.env.PORT || 4000;
-const origins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
+const configuredOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
   .split(",")
-  .map((value) => value.trim());
+  .map((value) => value.trim())
+  .filter(Boolean);
 
-app.use(cors({ origin: origins, credentials: true }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || isAllowedOrigin(origin)) return callback(null, true);
+      callback(new Error(`Origem nao permitida pelo CORS: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
@@ -27,6 +36,13 @@ app.use("/api/storage", requireAuth, userDataRouter);
 
 app.use((error, _req, res, _next) => {
   console.error(error);
+  if (error?.message?.startsWith("Origem nao permitida pelo CORS")) {
+    return res.status(403).json({
+      message:
+        "Origem do frontend nao permitida. Configure CLIENT_ORIGIN no Render com a URL da Vercel.",
+    });
+  }
+
   if (
     error?.name === "MongooseServerSelectionError" ||
     error?.name === "MongoServerSelectionError" ||
@@ -66,3 +82,17 @@ async function connectWithRetry() {
 
 app.listen(port, () => console.log(`API rodando na porta ${port}`));
 connectWithRetry();
+
+function isAllowedOrigin(origin) {
+  if (configuredOrigins.includes(origin)) return true;
+
+  try {
+    const url = new URL(origin);
+    const isLocalhost = ["localhost", "127.0.0.1"].includes(url.hostname);
+    const isVercel = url.hostname.endsWith(".vercel.app");
+
+    return isLocalhost || isVercel;
+  } catch {
+    return false;
+  }
+}
