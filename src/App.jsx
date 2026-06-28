@@ -223,6 +223,10 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [durationMonths, setDurationMonths] = useState(12);
+  const [goalMode, setGoalMode] = useState("simple");
+  const [templateJson, setTemplateJson] = useState(() =>
+    JSON.stringify(createTrailTemplateExample(), null, 2)
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -261,6 +265,22 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
       setTitle("");
       setDescription("");
       setDurationMonths(12);
+      setIsCreating(false);
+    } catch (err) {
+      setError(toAuthError(err));
+    }
+  }
+
+  async function importTemplateGoal(event) {
+    event.preventDefault();
+    setError("");
+
+    try {
+      const payload = parseTemplateGoal(templateJson);
+      const goal = await api.createGoal(payload);
+      setGoals((prev) => [goal, ...prev]);
+      onActiveGoalChange(goal);
+      setTemplateJson(JSON.stringify(createTrailTemplateExample(), null, 2));
       setIsCreating(false);
     } catch (err) {
       setError(toAuthError(err));
@@ -317,7 +337,7 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
       {isCreating && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsCreating(false)}>
           <form
-            onSubmit={createGoal}
+            onSubmit={goalMode === "simple" ? createGoal : importTemplateGoal}
             className="goal-modal"
             role="dialog"
             aria-modal="true"
@@ -339,39 +359,93 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
               </button>
             </div>
 
-            <label className="field">
-              <span>Titulo</span>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Ex: Aprender AWS"
-                autoFocus
-              />
-            </label>
-            <label className="field">
-              <span>Descricao curta</span>
-              <input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="O que esse objetivo precisa mover?"
-              />
-            </label>
-            <label className="field">
-              <span>Duração em meses</span>
-              <input
-                type="number"
-                min="1"
-                max="60"
-                value={durationMonths}
-                onChange={(event) => setDurationMonths(Number(event.target.value))}
-              />
-            </label>
+            <div className="goal-mode-switch" role="tablist" aria-label="Tipo de cadastro">
+              <button
+                type="button"
+                className={goalMode === "simple" ? "is-active" : ""}
+                onClick={() => setGoalMode("simple")}
+              >
+                Objetivo simples
+              </button>
+              <button
+                type="button"
+                className={goalMode === "template" ? "is-active" : ""}
+                onClick={() => setGoalMode("template")}
+              >
+                Importar trilha JSON
+              </button>
+            </div>
+
+            {goalMode === "simple" ? (
+              <>
+                <label className="field">
+                  <span>Titulo</span>
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Ex: Aprender AWS"
+                    autoFocus
+                  />
+                </label>
+                <label className="field">
+                  <span>Descricao curta</span>
+                  <input
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="O que esse objetivo precisa mover?"
+                  />
+                </label>
+                <label className="field">
+                  <span>Duração em meses</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={durationMonths}
+                    onChange={(event) => setDurationMonths(Number(event.target.value))}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <div className="template-help">
+                  Cole um JSON com este formato. Campos obrigatorios: <strong>title</strong> e{" "}
+                  <strong>months</strong>. Cada mês precisa de <strong>month</strong>,{" "}
+                  <strong>year</strong>, <strong>shortName</strong> e <strong>name</strong>.
+                </div>
+                <label className="field template-field">
+                  <span>Template da trilha</span>
+                  <textarea
+                    value={templateJson}
+                    onChange={(event) => setTemplateJson(event.target.value)}
+                    spellCheck="false"
+                  />
+                </label>
+              </>
+            )}
 
             <div className="goal-modal-actions">
-              <button type="button" onClick={seedDefault} className="secondary-button">
-                Importar trilha atual
-              </button>
-              <button className="primary-button">Salvar objetivo</button>
+              {goalMode === "simple" ? (
+                <>
+                  <button type="button" onClick={seedDefault} className="secondary-button">
+                    Importar trilha atual
+                  </button>
+                  <button className="primary-button">Salvar objetivo</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTemplateJson(JSON.stringify(createCareerGoalPayload(), null, 2))
+                    }
+                    className="secondary-button"
+                  >
+                    Usar trilha atual
+                  </button>
+                  <button className="primary-button">Importar JSON</button>
+                </>
+              )}
             </div>
           </form>
         </div>
@@ -388,6 +462,77 @@ function toAuthError(error) {
   return error?.message || "Nao foi possivel concluir a acao agora.";
 }
 
+function parseTemplateGoal(value) {
+  let payload;
+
+  try {
+    payload = JSON.parse(value);
+  } catch {
+    throw new Error("O template precisa ser um JSON valido.");
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("O template precisa ser um objeto JSON.");
+  }
+
+  if (!payload.title || typeof payload.title !== "string") {
+    throw new Error("O template precisa ter title como texto.");
+  }
+
+  if (!Array.isArray(payload.months) || payload.months.length === 0) {
+    throw new Error("O template precisa ter months com pelo menos um mes.");
+  }
+
+  const months = payload.months.map((month, index) => {
+    const monthNumber = Number(month.month);
+    const year = Number(month.year);
+
+    if (!monthNumber || monthNumber < 1 || monthNumber > 12 || !year) {
+      throw new Error(`O mes ${index + 1} precisa ter month entre 1 e 12 e year.`);
+    }
+
+    if (!month.shortName || !month.name) {
+      throw new Error(`O mes ${index + 1} precisa ter shortName e name.`);
+    }
+
+    return {
+      month: monthNumber,
+      year,
+      shortName: String(month.shortName),
+      name: String(month.name),
+      icon: month.icon || "🎯",
+      color: month.color || "#4C87F2",
+      theme: month.theme || `Mês ${index + 1}`,
+      objective: month.objective || "",
+      focus: ensureStringArray(month.focus),
+      studies: ensureStringArray(month.studies),
+      deliverable: month.deliverable || "",
+      technicalTask: month.technicalTask || "",
+      englishGoal: month.englishGoal || "",
+      phrases: ensureStringArray(month.phrases),
+      postIdea: month.postIdea || "",
+    };
+  });
+
+  return {
+    title: payload.title.trim(),
+    description: payload.description || "",
+    durationMonths: payload.durationMonths || months.length,
+    startDate: payload.startDate || monthStartIso(months[0]),
+    endDate: payload.endDate || monthEndIso(months[months.length - 1]),
+    status: payload.status || "active",
+    months,
+    routines: Array.isArray(payload.routines) ? payload.routines : [],
+    skills: Array.isArray(payload.skills) ? payload.skills : [],
+    artifacts: Array.isArray(payload.artifacts) ? payload.artifacts : [],
+    templates: Array.isArray(payload.templates) ? payload.templates : [],
+  };
+}
+
+function ensureStringArray(value) {
+  return Array.isArray(value) ? value.map((item) => String(item)) : [];
+}
+
 function createBlankGoalPayload({ title, description, durationMonths }) {
   const months = createProjectedMonths(durationMonths);
 
@@ -402,6 +547,41 @@ function createBlankGoalPayload({ title, description, durationMonths }) {
     routines: [],
     skills: [],
     artifacts: [],
+    templates: [],
+  };
+}
+
+function createTrailTemplateExample() {
+  const months = createProjectedMonths(3);
+
+  return {
+    title: "Minha trilha de exemplo",
+    description: "Objetivo com roteiro mensal, entregas e templates.",
+    durationMonths: 3,
+    startDate: monthStartIso(months[0]),
+    endDate: monthEndIso(months[months.length - 1]),
+    status: "active",
+    months: months.map((month, index) => ({
+      ...month,
+      theme: `Foco do mes ${index + 1}`,
+      objective: "Descreva o resultado esperado deste mes.",
+      focus: ["Primeiro foco", "Segundo foco"],
+      studies: ["Tema de estudo"],
+      deliverable: "Entregavel do mes",
+      technicalTask: "Tarefa tecnica pratica.",
+      englishGoal: "Pratica de comunicacao do mes",
+      phrases: ["Example sentence."],
+      postIdea: "Ideia de publicacao.",
+    })),
+    routines: [],
+    skills: [],
+    artifacts: [
+      {
+        id: "a01",
+        m: months[0].shortName,
+        lb: "Primeiro artefato do objetivo",
+      },
+    ],
     templates: [],
   };
 }
