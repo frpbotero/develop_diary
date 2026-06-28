@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import CareerDashboard, {
-  ARTEFATOS,
-  MONTHS,
-  ROUTINE,
-  SKILLS,
-  TEMPLATES,
-} from "../career-dashboard.jsx";
+import CareerDashboard from "../career-dashboard.jsx";
 import { createApi } from "./api.js";
 
 const savedSession = () => {
@@ -260,8 +254,9 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
       const goal = await api.createGoal(
         createBlankGoalPayload({ title, description, durationMonths })
       );
-      setGoals((prev) => [goal, ...prev]);
-      onActiveGoalChange(goal);
+      const nextGoals = [goal, ...goals.filter((item) => item._id !== goal._id)];
+      setGoals(nextGoals);
+      onActiveGoalChange(nextGoals[0]);
       setTitle("");
       setDescription("");
       setDurationMonths(12);
@@ -278,21 +273,10 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
     try {
       const payload = parseTemplateGoal(templateJson);
       const goal = await api.createGoal(payload);
-      setGoals((prev) => [goal, ...prev]);
-      onActiveGoalChange(goal);
+      const nextGoals = [goal, ...goals.filter((item) => item._id !== goal._id)];
+      setGoals(nextGoals);
+      onActiveGoalChange(nextGoals[0]);
       setTemplateJson(JSON.stringify(createTrailTemplateExample(), null, 2));
-      setIsCreating(false);
-    } catch (err) {
-      setError(toAuthError(err));
-    }
-  }
-
-  async function seedDefault() {
-    setError("");
-    try {
-      const goal = await api.createGoal(createCareerGoalPayload());
-      setGoals((prev) => [goal, ...prev]);
-      onActiveGoalChange(goal);
       setIsCreating(false);
     } catch (err) {
       setError(toAuthError(err));
@@ -426,25 +410,9 @@ function GoalManager({ api, activeGoal, onActiveGoalChange }) {
 
             <div className="goal-modal-actions">
               {goalMode === "simple" ? (
-                <>
-                  <button type="button" onClick={seedDefault} className="secondary-button">
-                    Importar trilha atual
-                  </button>
-                  <button className="primary-button">Salvar objetivo</button>
-                </>
+                <button className="primary-button">Salvar objetivo</button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setTemplateJson(JSON.stringify(createCareerGoalPayload(), null, 2))
-                    }
-                    className="secondary-button"
-                  >
-                    Usar trilha atual
-                  </button>
-                  <button className="primary-button">Importar JSON</button>
-                </>
+                <button className="primary-button">Importar JSON</button>
               )}
             </div>
           </form>
@@ -583,39 +551,6 @@ function createTrailTemplateExample() {
       },
     ],
     templates: [],
-  };
-}
-
-function createCareerGoalPayload() {
-  return {
-    title: "Da Analise a Arquitetura",
-    description:
-      "Trilha de 6 meses para evoluir como Analista de Projetos Pleno com raciocinio de arquitetura.",
-    durationMonths: 6,
-    startDate: "2026-07-01",
-    endDate: "2026-12-31",
-    status: "active",
-    months: MONTHS.map((m) => ({
-      month: m.n,
-      year: 2026,
-      shortName: m.s,
-      name: m.nm,
-      icon: m.ic,
-      color: m.c,
-      theme: m.mt,
-      objective: m.ob,
-      focus: m.fo,
-      studies: m.es,
-      deliverable: m.ev,
-      technicalTask: m.ta,
-      englishGoal: m.ig,
-      phrases: m.fr,
-      postIdea: m.po,
-    })),
-    routines: ROUTINE,
-    skills: SKILLS,
-    artifacts: ARTEFATOS,
-    templates: TEMPLATES,
   };
 }
 
